@@ -9,8 +9,9 @@ import gym
 
 
 class TwoDofArmEnv(gym.Env):
-	def __init__(self,ActiveMuscles='antagonistic',actionParameterization = True):
+	def __init__(self,ActiveMuscles='antagonistic',actionParameterization = True,sim_length=0.1):
 		
+		self.sim_length = sim_length
 		## ARM PHYSICAL DIMENSIONS - taken from Lan et al. 2008
 		self.m1 = 2.1 # Upper Arm mass
 		self.m2 = 1.0 # Forearm Mass
@@ -33,17 +34,31 @@ class TwoDofArmEnv(gym.Env):
 		# MTU - need to define 4 of these
 		if ActiveMuscles == 'antagonistic':
 			self.antagonistic = True
+		else:
+			self.antagonistic = False
 
-		self.Fmax_bicep = 600
+		self.Fmax_bicep = 1200
 		self.Fmax_tricep = 450
-		self.Fmax_ad = 1000
+		self.Fmax_ad = 1500
 		self.Fmax_pd = 750
 
-		self.MTU_unit_bb = self.MTU()
-		self.MTU_unit_ad = self.MTU()
+		# Initial muscle lengths
+		self.lm0_bb = lm0_bb
+		self.lm0_tb = lm0_tb
+		self.lm0_ad = lm0_ad
+		self.lm0_pd = lm0_pd
+		#print("lm0_ad",lm0_ad)
+		self.vm0_bb = 0.
+		self.vm0_tb = 0.
+		self.vm0_ad = 0.
+		self.vm0_pd = 0.
+
+
+		self.MTU_unit_bb = MTU(L0=self.lm0_bb,F_max=self.Fmax_bicep,Vm_max=-1.0,Lt_slack=lmtu0_bb)
+		self.MTU_unit_ad = MTU(L0=self.lm0_ad,F_max=self.Fmax_ad,Vm_max=-1.0,Lt_slack=lmtu0_ad)
 		if self.antagonistic:
-			self.MTU_unit_pd = self.MTU()
-			self.MTU_unit_tb = self.MTU()
+			self.MTU_unit_pd = MTU(L0=self.lm0_pd,F_max=self.Fmax_pd,Vm_max=-1.0,Lt_slack=lmtu0_tb)
+			self.MTU_unit_tb = MTU(L0=self.lm0_tb,F_max=self.Fmax_tb,Vm_max=-1.0,Lt_slack=lmtu0_pd)
 
 
 	def Bicep_MomentArm(self,angle):
@@ -127,10 +142,14 @@ class TwoDofArmEnv(gym.Env):
 		return ml*0.001
 
 	def activation_bb(self,t):
-		return None
+		#print("time",t)
+		index = int(t/self.dt)
+
+		return self.act_bb[index]
 
 	def activation_ad(self,t):
-		return None
+		index = int(t/self.dt)
+		return self.act_ad[index]
 
 	def activation_pd(self,t):
 		return None
@@ -139,7 +158,7 @@ class TwoDofArmEnv(gym.Env):
 		return None
 
 
-	def MuscleArmDynamics(self,x,t,act):
+	def MuscleArmDynamics(self,x,t):
 
 		# 12 dimensional vector
 		#x[0] - shoulder angle
@@ -164,7 +183,7 @@ class TwoDofArmEnv(gym.Env):
 		theta2 = x[2]
 		dtheta2 = x[3]
 
-		if self.antagonisitc:
+		if self.antagonistic:
 			lm_bb = x[4]
 			vm_bb = x[5]
 
@@ -193,7 +212,7 @@ class TwoDofArmEnv(gym.Env):
 			F_m_bb = F_a_bb + F_p_bb
 			ema_bb = self.Bicep_MomentArm(theta2)
 			Torque_bb = ema_bb*F_m_bb
-			lt_bb = self.MTU_unit_bb(F_m_bb)
+			lt_bb = self.MTU_unit_bb.TendonDynamics(F_m_bb)
 			theta2_new = x[2] + x[3]*self.dt
 			new_Lmtu_bb = self.Bicep_MuscleLength(theta2_new)
 			lm_new_bb = new_Lmtu_bb - lt_bb
@@ -206,7 +225,7 @@ class TwoDofArmEnv(gym.Env):
 			F_m_tb = F_a_tb + F_p_tb
 			ema_tb = self.Tricep_MomentArm(theta2)
 			Torque_tb = ema_tb*F_m_tb
-			lt_tb = self.MTU_unit_tb(F_m_tb)
+			lt_tb = self.MTU_unit_tb.TendonDynamics(F_m_tb)
 			#theta2_new = x[2] + x[3]*self.dt
 			new_Lmtu_tb = self.Tricep_MuscleLength(theta2_new)
 			lm_new_tb = new_Lmtu_tb - lt_tb
@@ -219,7 +238,7 @@ class TwoDofArmEnv(gym.Env):
 			F_m_ad = F_a_ad + F_p_ad
 			ema_ad = self.Adeltoid_MomentArm(theta1)
 			Torque_ad = ema_ad*F_m_ad
-			lt_ad = self.MTU_unit_ad(F_m_ad)
+			lt_ad = self.MTU_unit_ad.TendonDynamics(F_m_ad)
 			theta1_new = x[0] + x[1]*self.dt
 			new_Lmtu_ad = self.ADeltoid_MuscleLength(theta1_new)
 			lm_new_ad = new_Lmtu_ad - lt_ad
@@ -233,7 +252,7 @@ class TwoDofArmEnv(gym.Env):
 			F_m_pd = F_a_pd + F_p_pd
 			ema_pd = self.PDeltoid_MomentArm(theta1)
 			Torque_pd = ema_pd*F_m_pd
-			lt_pd = self.MTU_unit_pd(F_m_pd)
+			lt_pd = self.MTU_unit_pd.TendonDynamics(F_m_pd)
 			#theta2_new = x[2] + x[3]*self.dt
 			new_Lmtu_pd = self.PDeltoid_MuscleLength(theta1_new)
 			lm_new_pd = new_Lmtu_pd - lt_pd
@@ -249,36 +268,66 @@ class TwoDofArmEnv(gym.Env):
 
 			lm_ad=x[6]
 			vm_ad = x[7]
+			a_bb = self.activation_bb(t)
+			a_ad = self.activation_ad(t)
 
+
+			#debug print
+
+			fl_bb = np.exp(-((lm_bb/lm0_bb) - 1)**2/0.45)
+			#fl_tb = np.exp(-((lm_tb/lm0_tb) - 1)**2/0.45)
+			fl_ad = np.exp(-((lm_ad/lm0_ad) - 1)**2/0.45)
+			#fl_pd = np.exp(-((lm_pd/lm0_pd) - 1)**2/0.45)
 			# Bicep Muscle Dynamics
 			F_a_bb,_,_ = self.MTU_unit_bb.MuscleDynamics(a_bb,lm_bb,vm_bb,fl_bb)
 			F_p_bb = self.MTU_unit_bb.PassiveMuscleForce(lm_bb)
 			F_m_bb = F_a_bb + F_p_bb
 			ema_bb = self.Bicep_MomentArm(theta2)
 			Torque_bb = ema_bb*F_m_bb
-			lt_bb = self.MTU_unit_bb(F_m_bb)
+			lt_bb = self.MTU_unit_bb.TendonDynamics(F_m_bb)
 			theta2_new = x[2] + x[3]*self.dt
-			new_Lmtu_bb = self.Bicep_MuscleLength(angle)
-			lm_new_bb = new_Lmtu_bb - lt_bb
-			dlm_bb = (lm_new_bb - lm_bb)/self.dt
+			new_Lmtu_bb = self.Bicep_MuscleLength(theta2_new)
+			lm_new_bb = new_Lmtu_bb# - lt_bb
+			dlm_bb = (lm_new_bb - (lm_bb+0.245))/self.dt
 			dvm_bb = (dlm_bb - vm_bb)/self.dt
+			#debug print
+			#print("new_Lmtu_bb",new_Lmtu_bb)
+			#print("lt_bb",lt_bb)
+			#print("dlm_bb",dlm_bb)
+			#print("a_bb",a_bb)
+			#print("F_m",F_m_bb)
+			#print("ema_bb",ema_bb)
+			#print("torqu",Torque_bb)
 
 			# Anterior Deltoid Muscle Dynamics
+			
 			F_a_ad,_,_ = self.MTU_unit_ad.MuscleDynamics(a_ad,lm_ad,vm_ad,fl_ad)
 			F_p_ad = self.MTU_unit_ad.PassiveMuscleForce(lm_ad)
 			F_m_ad = F_a_ad + F_p_ad
-			ema_ad = self.Adeltoid_MomentArm(theta1)
+			ema_ad = self.ADeltoid_MomentArm(theta1)
+			
 			Torque_ad = ema_ad*F_m_ad
-			lt_ad = self.MTU_unit_ad(F_m_ad)
+			lt_ad = self.MTU_unit_ad.TendonDynamics(F_m_ad)
 			theta1_new = x[0] + x[1]*self.dt
 			new_Lmtu_ad = self.ADeltoid_MuscleLength(theta1_new)
-			lm_new_ad = new_Lmtu_ad - lt_ad
-			dlm_ad = (lm_new_ad - lm_ad)/self.dt
+			lm_new_ad = new_Lmtu_ad# - lt_ad
+			dlm_ad = (lm_new_ad - (lm_ad+0.105))/self.dt
 			dvm_ad = (dlm_ad - vm_ad)/self.dt
-
+			
 			Torques = np.array([[Torque_ad],[Torque_bb]])
-
-
+			#debug print
+			#print("***************************************")
+			#print("new_Lmtu_ad",new_Lmtu_ad)
+			##print("dlm_bb",dlm_bb)
+			#print("lt_ad",lt_ad)
+			#print("lm_ad",lm_ad)
+			#print("dlm",dlm_ad)
+			#print("a_ad",a_ad)
+			#print("F_m_ad",F_m_ad)
+			#print("ema_ad",ema_ad)
+			#print("torqu",Torque_ad)
+			#print("******************************************")
+		#d = 2*r
 		# state vectors - q and qdot
 		qdot = np.array([[dtheta1],[dtheta2]])
 		q = np.array([[theta1],[theta2]])
@@ -297,8 +346,11 @@ class TwoDofArmEnv(gym.Env):
 			[self.m2*self.g*self.l2*np.sin(theta1+theta2)]])
 
 		Damping = np.array([[2.10,0],[0,2.10]])
-		Torques = np.zeros(2,) # For Time Being
-		acc = np.dot(np.linalg.inv(Hq),(Torques -np.dot(Cq,qdot) + Gq - np.dot(damping,qdot)))
+		#Torques = np.zeros(2,) # For Time Being
+		acc = np.dot(np.linalg.inv(Hq),(Torques+-np.dot(Cq,qdot) + Gq - np.dot(Damping,qdot)))
+		#print(np.dot(Damping,qdot).shape)
+
+		#print(acc)
 
 		# return derivatives
 		if self.antagonistic:
@@ -339,17 +391,45 @@ class TwoDofArmEnv(gym.Env):
 		# use this to simulate 0.2 seconds with odeint
 		# get  s,a,r,s' after computing reward for the next sim-step
 		# return those values
-		# create square waves 
-		t = np.arange(0,0.2,self.dt)
+
+		# create square waves as excitation with parameters in a
+		# 
+
+		print(a[0])
+		sim_length = self.sim_length
+		sim_nsteps = int(sim_length/self.dt)+100
 		if self.antagonistic:
-			state = 
+			self.act_bb = a[0]*np.ones(sim_nsteps)
+			self.act_ad = a[1]*np.ones(sim_nsteps)
+			self.act_tb = a[2]*np.ones(sim_nsteps)
+			self.act_pd = a[3]*np.ones(sim_nsteps)
 
 		else:
-			state = 
+			self.act_bb =a[0]*np.ones(sim_nsteps,)
+			self.act_ad = a[1]*np.ones(sim_nsteps,)
 
-		data = odeinte(self.MuscleArmDynamics,state,t,args=(a,))
+		t = np.arange(0,sim_length,self.dt)
+		
+		state = np.concatenate((self.ArmState,self.Cur_lm,self.Cur_vm))
 
+		data = odeint(self.MuscleArmDynamics,state,t)
 
+		if self.antagonistic:
+			self.ArmState = data[-1,:4]
+			self.Cur_lm = data[-1,4:8]
+			self.Cur_vm = data[-1,8:]
+
+		else:
+			self.ArmState = data[-1,:4]
+			self.Cur_lm = data[-1,4:6]
+			self.Cur_vm = data[-1,6:]
+
+		#print("data",data.shape)
+		done = False
+		# Just testing the dynamics
+		reward = 0.
+		# GYM STYLE - s,reward,done,{extra params}
+		return np.concatenate((self.ArmState,self.Cur_lm,self.Cur_vm)),reward,done,{'data':data}
 
 
 
@@ -364,7 +444,21 @@ class TwoDofArmEnv(gym.Env):
 	def reset(self,):
 		# Uniform Initial state distribution
 		self.InitState += np.random.uniform(low=-0.005,high=0.005,size=4)
-		return self.InitState
+		self.ArmState = np.copy(self.InitState)
+		if self.antagonistic:
+			self.lm0 = np.array([self.lm0_bb,self.lm0_tb,self.lm0_ad,self.lm0_pd])
+			self.Cur_lm = np.array([self.lm0_bb,self.lm0_tb,self.lm0_ad,self.lm0_pd])
+			self.vm0 = np.zeros(4,)
+			self.Cur_vm = np.zeros(4,)
+		else:
+			self.lm0 = np.array([self.lm0_bb,self.lm0_ad])
+			self.Cur_lm = np.array([self.lm0_bb,self.lm0_ad])
+			self.vm0 = np.zeros(2,)
+			self.Cur_vm = np.zeros(2,)
+		#print(self.Cur_lm)
+
+		state = np.concatenate((self.InitState,self.lm0,self.vm0))
+		return state
 
 
 
