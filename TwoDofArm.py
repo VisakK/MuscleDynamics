@@ -43,10 +43,10 @@ class TwoDofArmEnv(gym.Env):
 		self.Fmax_pd = 750
 
 		# Initial muscle lengths
-		self.lm0_bb = lm0_bb
-		self.lm0_tb = lm0_tb
-		self.lm0_ad = lm0_ad
-		self.lm0_pd = lm0_pd
+		self.lm0_bb = lmtu0_bb
+		self.lm0_tb = lmtu0_tb
+		self.lm0_ad = lmtu0_ad
+		self.lm0_pd = lmtu0_pd
 		#print("lm0_ad",lm0_ad)
 		self.vm0_bb = 0.
 		self.vm0_tb = 0.
@@ -185,15 +185,15 @@ class TwoDofArmEnv(gym.Env):
 
 		if self.antagonistic:
 			lm_bb = x[4]
-			vm_bb = x[5]
+			vm_bb = x[8]
 
-			lm_tb = x[6]
-			vm_tb = x[7]
+			lm_tb = x[5]
+			vm_tb = x[9]
 
-			lm_ad=x[8]
-			vm_ad = x[9]
+			lm_ad=x[6]
+			vm_ad = x[10]
 
-			lm_pd=x[10]
+			lm_pd=x[7]
 			vm_pd =x[11]
 
 			a_bb = self.activation_bb(t)
@@ -201,10 +201,10 @@ class TwoDofArmEnv(gym.Env):
 			a_ad = self.activation_ad(t)
 			a_pd = self.activation_pd(t)
 
-			fl_bb = np.exp(-((lm_bb/lm0_bb) - 1)**2/0.45)
-			fl_tb = np.exp(-((lm_tb/lm0_tb) - 1)**2/0.45)
-			fl_ad = np.exp(-((lm_ad/lm0_ad) - 1)**2/0.45)
-			fl_pd = np.exp(-((lm_pd/lm0_pd) - 1)**2/0.45)	
+			fl_bb = np.exp(-((lm_bb/lmtu0_bb) - 1)**2/0.45)
+			fl_tb = np.exp(-((lm_tb/lmtu0_tb) - 1)**2/0.45)
+			fl_ad = np.exp(-((lm_ad/lmtu0_ad) - 1)**2/0.45)
+			fl_pd = np.exp(-((lm_pd/lmtu0_pd) - 1)**2/0.45)	
 
 			# Bicep Muscle Dynamics
 			F_a_bb,_,_ = self.MTU_unit_bb.MuscleDynamics(a_bb,lm_bb,vm_bb,fl_bb)
@@ -264,9 +264,9 @@ class TwoDofArmEnv(gym.Env):
 
 		else:
 			lm_bb = x[4]
-			vm_bb = x[5]
+			vm_bb = x[6]
 
-			lm_ad=x[6]
+			lm_ad=x[5]
 			vm_ad = x[7]
 			a_bb = self.activation_bb(t)
 			a_ad = self.activation_ad(t)
@@ -274,11 +274,13 @@ class TwoDofArmEnv(gym.Env):
 
 			#debug print
 
-			fl_bb = np.exp(-((lm_bb/lm0_bb) - 1)**2/0.45)
+			fl_bb = np.exp(-((lm_bb/lmtu0_bb) - 1)**2/0.45)
 			#fl_tb = np.exp(-((lm_tb/lm0_tb) - 1)**2/0.45)
-			fl_ad = np.exp(-((lm_ad/lm0_ad) - 1)**2/0.45)
+			fl_ad = np.exp(-((lm_ad/lmtu0_ad) - 1)**2/0.45)
 			#fl_pd = np.exp(-((lm_pd/lm0_pd) - 1)**2/0.45)
 			# Bicep Muscle Dynamics
+			lmtu_old_bb = self.Bicep_MuscleLength(theta2)
+
 			F_a_bb,_,_ = self.MTU_unit_bb.MuscleDynamics(a_bb,lm_bb,vm_bb,fl_bb)
 			F_p_bb = self.MTU_unit_bb.PassiveMuscleForce(lm_bb)
 			F_m_bb = F_a_bb + F_p_bb
@@ -288,7 +290,7 @@ class TwoDofArmEnv(gym.Env):
 			theta2_new = x[2] + x[3]*self.dt
 			new_Lmtu_bb = self.Bicep_MuscleLength(theta2_new)
 			lm_new_bb = new_Lmtu_bb# - lt_bb
-			dlm_bb = (lm_new_bb - (lm_bb+0.245))/self.dt
+			dlm_bb = (lm_new_bb - lmtu_old_bb)/self.dt #+0.245
 			dvm_bb = (dlm_bb - vm_bb)/self.dt
 			#debug print
 			#print("new_Lmtu_bb",new_Lmtu_bb)
@@ -300,7 +302,7 @@ class TwoDofArmEnv(gym.Env):
 			#print("torqu",Torque_bb)
 
 			# Anterior Deltoid Muscle Dynamics
-			
+			lmtu_old_ad = self.ADeltoid_MuscleLength(theta1)
 			F_a_ad,_,_ = self.MTU_unit_ad.MuscleDynamics(a_ad,lm_ad,vm_ad,fl_ad)
 			F_p_ad = self.MTU_unit_ad.PassiveMuscleForce(lm_ad)
 			F_m_ad = F_a_ad + F_p_ad
@@ -311,14 +313,17 @@ class TwoDofArmEnv(gym.Env):
 			theta1_new = x[0] + x[1]*self.dt
 			new_Lmtu_ad = self.ADeltoid_MuscleLength(theta1_new)
 			lm_new_ad = new_Lmtu_ad# - lt_ad
-			dlm_ad = (lm_new_ad - (lm_ad+0.105))/self.dt
+			dlm_ad = (lm_new_ad - lmtu_old_ad)/self.dt #+0.105
 			dvm_ad = (dlm_ad - vm_ad)/self.dt
 			
 			Torques = np.array([[Torque_ad],[Torque_bb]])
 			#debug print
 			#print("***************************************")
+			
 			#print("new_Lmtu_ad",new_Lmtu_ad)
 			##print("dlm_bb",dlm_bb)
+			#print("theta1_new",theta1_new)
+			#print("theta1",theta1)
 			#print("lt_ad",lt_ad)
 			#print("lm_ad",lm_ad)
 			#print("dlm",dlm_ad)
@@ -361,12 +366,12 @@ class TwoDofArmEnv(gym.Env):
 			dx[2] = x[3]
 			dx[3] = acc[1]
 			dx[4] = dlm_bb
-			dx[5] = dvm_bb
-			dx[6] = dlm_tb
-			dx[7] = dvm_tb
-			dx[8] = dlm_ad
-			dx[9] = dvm_ad
-			dx[10] = dlm_pd
+			dx[5] = dlm_tb
+			dx[6] = dlm_ab
+			dx[7] = dlm_pb
+			dx[8] = dvm_bb
+			dx[9] = dvm_tb
+			dx[10] = dvm_ad
 			dx[11] = dvm_pd
 
 		else:
@@ -377,8 +382,8 @@ class TwoDofArmEnv(gym.Env):
 			dx[2] = x[3]
 			dx[3] = acc[1]
 			dx[4] = dlm_bb
-			dx[5] = dvm_bb
-			dx[6] = dlm_ad
+			dx[5] = dlm_ad
+			dx[6] = dvm_bb
 			dx[7] = dvm_ad
 
 		return dx
