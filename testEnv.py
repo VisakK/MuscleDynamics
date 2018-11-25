@@ -25,7 +25,7 @@ def animate(i):
     time_text.set_text('time = %.2f' % 0.1)
     return line, time_text
 
-Env = TwoDofArmEnv(ActiveMuscles='agonist',actionParameterization=True,sim_length=2.0)
+Env = TwoDofArmEnv(ActiveMuscles='agonist',actionParameterization=True,sim_length=0.2)
 
 
 
@@ -33,18 +33,30 @@ Env.reset()
 
 ob,reward,done,look= Env.step([0.3,0.3])
 
-plt.plot(look['data'][:,[0,2]])
+data = look['data']
+
+
+ob,reward,done,look= Env.step([0.,0.])
+
+data = np.append(data,look['data'],axis=0)
+
+ob,reward,done,look= Env.step([0.2,0.2])
+data = np.append(data,look['data'],axis=0)
+print("data",data.shape)
+
+
+plt.plot(data[:,[0,2]])
 
 plt.figure()
-plt.plot(look['data'][:,[4,6]])
+plt.plot(data[:,[4,6]])
 plt.title('Lenghts')
 
 plt.figure()
-plt.plot(look['data'][:,[5,7]])
+plt.plot(data[:,[5,7]])
 plt.title('V')
 
 global pos
-pos = look['data']
+pos = data
 
 plt.show()
 fig = plt.figure(figsize=(10,10))
