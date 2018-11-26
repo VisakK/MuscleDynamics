@@ -1,0 +1,8 @@
+
+
+Things to do:
+
+1) Clean up Code - better document
+2) Change Moment of Inertia
+3) Reinforcement Learning Code - how to run experiments(Documentation)?
+4) handle.mat - parse to joint angles - Inverse Kinematics ? maybe?
